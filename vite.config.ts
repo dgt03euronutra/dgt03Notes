@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/dgt03Notes/',
+  base: './',
   test: {
     environment: 'jsdom',
     globals: true,
