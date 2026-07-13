@@ -148,24 +148,39 @@ body {
 }
 
 .agenda__day {
-  flex-direction: column;
-  gap: 0.25rem;
+  position: relative;
   cursor: pointer;
 }
 
 .agenda__day--selected {
-  border-color: #3056d3;
+  border-color: #6682df;
   background: #e8eefc;
+}
+.agenda__day--today{
+  box-shadow: inset 0 0 0 2px #3056d3;
+}
+.agenda__day--today.agenda__day--selected{
+  box-shadow: inset 0 0 0 2px #3056d3;
 }
 
 .agenda__day-number {
   font-size: 1.08rem;
   font-weight: 700;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .agenda__note-indicator {
-  font-size: 1.05rem;
-  color: #3056d3;
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: block;
 }
 
 .agenda__cell--empty {
@@ -175,10 +190,37 @@ body {
 }
 
 .agenda__editor-panel {
+  display: flex;
+  flex-direction: column;
   background: #f8fafc;
   border-radius: 16px;
   padding: 1.25rem;
   min-height: 360px;
+}
+
+.agenda_editor-header{
+  display: flex;
+  gap: 30px;
+}
+
+.agenda-color-selector{
+  display: flex;
+  gap: 0.75rem;
+}
+
+.agenda-color-option{
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.agenda-color-option:hover{transform: scale(1.15);}
+.agenda-color-option--selected{
+  border: 3px solid #111827;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.12);
 }
 
 .agenda__editor-panel h2 {

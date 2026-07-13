@@ -1,6 +1,10 @@
 const STORAGE_KEY = 'agenda-entries';
 
-type AgendaEntries = Record<string, string>;
+interface AgendaEntry{
+  text: string;
+  color: string;
+}
+type AgendaEntries = Record<string, AgendaEntry>;
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 
@@ -12,6 +16,7 @@ interface AgendaState {
   entries: AgendaEntries;
   storage: Storage;
   feedback: FeedbackState;
+  selectedColor: string;
 }
 
 interface AgendaOptions {
@@ -19,6 +24,10 @@ interface AgendaOptions {
   month?: number;
   storage?: Storage;
 }
+
+const NOTE_COLORS = {
+  AZUL: '#3056d3', NARANJA: '#ea580c', VERDE: '#16a34a', NEGRO: '#111827', ROJO: '#ff0000'
+} as const;
 
 function createDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -35,8 +44,16 @@ function readEntries(storage: Storage): AgendaEntries {
   }
 
   try {
-    const parsed = JSON.parse(raw) as AgendaEntries;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    const parsed = JSON.parse(raw);
+    const migrated: AgendaEntries = {};
+    for (const [date, value] of Object.entries(parsed)){
+      if(typeof value == 'string'){
+        migrated[date] = {text: value, color: '#3056d3'};
+      } else if(value && typeof value == 'object' && 'text' in value){
+        migrated[date] = value as AgendaEntry;}
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    return migrated;
   } catch {
     return {};
   }
@@ -123,7 +140,10 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
     entries: readEntries(storage),
     storage,
     feedback: null,
+    selectedColor: '#3056d3'
   };
+
+  let feedbackTimeout: number | null = null;
 
   const render = (): void => {
     const grid = buildCalendarGrid(state.year, state.month);
@@ -161,22 +181,20 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
                   }
 
                   const dateKey = createDateKey(new Date(state.year, state.month, day));
+                  const todayKey = createDateKey(new Date());
+                  const isToday = dateKey === todayKey;
                   const isSelected = state.selectedDate === dateKey;
                   const note = state.entries[dateKey];
+                  const hasNote = note?.text?.trim();
                   const classes = ['agenda__cell', 'agenda__day'];
 
-                  if (isSelected) {
-                    classes.push('agenda__day--selected');
-                  }
+                  if (isSelected) {classes.push('agenda__day--selected');}
+                  if (isToday) {classes.push('agenda__day--today')};
 
                   return `
-                    <button
-                      type="button"
-                      class="${classes.join(' ')}"
-                      data-date="${dateKey}"
-                    >
+                    <button type="button" class="${classes.join(' ')}" data-date="${dateKey}">
                       <span class="agenda__day-number">${day}</span>
-                      ${note ? '<span class="agenda__note-indicator">•</span>' : ''}
+                      ${hasNote ? `<span class="agenda__note-indicator" style="background:${note.color}"></span>` : ''}
                     </button>
                   `;
                 })
@@ -184,9 +202,17 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
             </div>
           </div>
 
-          <section class="agenda__editor-panel">
-            ${state.selectedDate ? `
-              <h2>${formatDayLabel(state.selectedDate)}</h2>
+          <section class="agenda__editor-panel"> ${state.selectedDate ? `
+              <div class="agenda_editor-header">
+                <h2>${formatDayLabel(state.selectedDate)}</h2>
+                <div class="agenda-color-selector">
+                  ${Object.entries(NOTE_COLORS).map(
+                    ([name, value]) => `
+                      <button type="button" class="agenda-color-option ${state.selectedColor === value ? 'agenda-color-option--selected' : ''}"
+                        data-color="${value}" title="${name}" style="background:${value}"></button>`
+                ).join('')}
+                </div>
+              </div>
               <textarea data-editor="true" rows="8">${escapeHtml(state.draft)}</textarea>
               <div class="agenda__actions">
                 <button
@@ -209,6 +235,7 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
   container.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
     const actionButton = target.closest<HTMLButtonElement>('[data-action]');
+    const colorButton = target.closest<HTMLButtonElement>('[data-color]');
 
     if (actionButton) {
       const action = actionButton.dataset.action;
@@ -262,7 +289,9 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
         state.year = today.getFullYear();
         state.month = today.getMonth();
         state.selectedDate = createDateKey(today);
-        state.draft = state.entries[state.selectedDate] ?? '';
+        const entry = state.entries[state.selectedDate];
+        state.draft = entry?.text ?? '';
+        state.selectedColor = entry?.color ?? '#3056d3';
         state.feedback = null;
         render();
         return;
@@ -276,10 +305,18 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
         }
 
         try {
-          const nextEntries = { ...state.entries, [state.selectedDate]: state.draft };
+          const nextEntries = { ...state.entries};
+          if(state.draft.trim()){
+            nextEntries[state.selectedDate] = {text: state.draft, color: state.selectedColor};
+          } else {delete nextEntries[state.selectedDate];}
           writeEntries(nextEntries, state.storage);
           state.entries = nextEntries;
           state.feedback = { type: 'success', message: 'Nota guardada correctamente.' };
+          if(feedbackTimeout){clearTimeout(feedbackTimeout);}
+          feedbackTimeout = window.setTimeout(() => {
+            state.feedback = null;
+            render();
+          }, 3000);
         } catch {
           state.feedback = { type: 'error', message: 'No se pudo guardar la nota.' };
         }
@@ -289,10 +326,22 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
       }
     }
 
+    if(colorButton){
+      state.selectedColor = colorButton.dataset.color ?? '#3056d3';
+      render();
+      return;
+    }
+
     const dayButton = target.closest<HTMLButtonElement>('[data-date]');
     if (dayButton) {
       state.selectedDate = dayButton.dataset.date ?? null;
-      state.draft = state.selectedDate ? state.entries[state.selectedDate] ?? '' : '';
+      if(state.selectedDate && state.entries[state.selectedDate]){
+        state.draft = state.entries[state.selectedDate].text;
+        state.selectedColor = state.entries[state.selectedDate].color;
+      } else {
+        state.draft = '';
+        state.selectedColor = '#3056d3';
+      }
       state.feedback = null;
       render();
     }
@@ -302,7 +351,11 @@ export function initAgenda(container: HTMLElement, options?: AgendaOptions): voi
     'input',
     (event) => {
       const target = event.target as HTMLTextAreaElement;
-      if (target.dataset.editor === 'true') {
+      if(target instanceof HTMLInputElement && target.dataset.colorSelector === 'true'){
+        state.selectedColor = target.value;
+        return;
+      }
+      if (target instanceof HTMLTextAreaElement && target.dataset.editor === 'true') {
         state.draft = target.value;
         if (state.feedback?.type) {
           state.feedback = null;
